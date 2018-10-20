@@ -1,0 +1,6 @@
+/venv
+*.pyc
+*.jpg
+*.txt
+/config.py
+!requirements.txt
