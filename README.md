@@ -11,6 +11,13 @@ sudo vim /etc/ImageMagick-6/policy.xml
     <policy domain="coder" rights="read|write" pattern="LABEL" />
 ```
 
+# Usage with extensible-slackbot
+Copy the config-example and update the url and paths.
+
+Set-up crons:
+- weekly: create_weekly_dump_for_url.py
+- daily: get_reactions_for_today.py
+
 # Main Source
 https://medium.freecodecamp.org/getting-started-with-tesseract-part-i-2a6a6b1cf75e
 
