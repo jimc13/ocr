@@ -5,12 +5,9 @@ import cv2
 import requests
 import io
 import wand.image
-import os
-import time
 import unicodedata
-from config import url
 
-def get_jpg(url):
+def create_jpg(url, jpg_save_file):
     """
     Fetches a the content from a URL and converts it to a fairly big jpg on the
     assumption it is a PDF that we need to maintain the quality of
@@ -21,15 +18,39 @@ def get_jpg(url):
     with wand.image.Image(file=f, resolution=500) as img:
         with img.convert('jpg') as converted:
             converted.compression_quality = 99
-            converted.save(filename='menu.jpg')
+            converted.save(filename=jpg_save_file)
 
+def get_text_for_jpg(jpg_path):
+    """
 
-def get_string(img_path, output_path="out"):
+    Stripped down version of the borrowed and modified get string function
+    For our PDF the conversion to grey does almost all of the work but I'll
+    leave the rest of it in
+    """
+    img = cv2.imread(jpg_path)
+    # Rescale the image, if needed.
+    img = cv2.resize(img, None, fx=1.5, fy=1.5, interpolation=cv2.INTER_CUBIC)
+    # Convert to gray
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Apply dilation and erosion to remove some noise
+    kernel = np.ones((1, 1), np.uint8)
+    img = cv2.dilate(img, kernel, iterations=1)
+    img = cv2.erode(img, kernel, iterations=1)
+    # Apply blur to smooth out the edges
+    img = cv2.GaussianBlur(img, (5, 5), 0)
+    # Apply threshold to get image with only b&w (binarization)
+    img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    # Recognize text with tesseract for python
+    result = pytesseract.image_to_string(img, lang="eng")
+    return result
+
+def get_string(img_path, output_dir="out"):
     """
     Carries out a number of transformations with the intention in improving the
     readablity of the image.  Each of these are saved as separate files as this
     is here for testing / to be played with rather than ran regularly
     """
+    import os
     # Read image using opencv
     img = cv2.imread(img_path)
 
@@ -80,6 +101,7 @@ def get_string_for_dir(dir):
     Function to be used in testing to compare the improvements of different
     stages in the image declutter process
     """
+    import os
     for x, y, files in os.walk(dir):
         for filename in sorted(files):
             assert filename.endswith("jpg")
@@ -93,7 +115,7 @@ def pull_info_out_by_day(text):
     a dictionary, key: day, value: text from menu that day
     """
     # Use placeholder values for the weekend since the restraunt doesn't open
-    data = {"SAT": ":pizza:", "SUN": ":spaghetti:"}
+    data = {"SAT": "spaghetti", "SUN": "spaghetti"}
     days = ("MON", "TUE", "WED", "THU", "FRI")
     current_day = days[0]
     for line in text.split("\n"):
@@ -110,9 +132,7 @@ def select_unicode_responses(text):
     Returns the emoji for any words that exactly match the name of an emoji
     supported by python
 
-    This currently allows Slack emoji that are specified using colons, it would
-    be nice to allow any words in an up to date list of Slack's emoji and add
-    colons to them automagically
+    Needs to allow Slack emoticons
 
     Would be nice to add phrase support
     """
@@ -120,48 +140,9 @@ def select_unicode_responses(text):
     for word in text.split():
         # not sure if I want to use regex against a unicode data file unicode
         # or bruteforce this within python
-        if word.startswith(":") and word.endswith(":") and len(word) > 2:
-            responses.append(word)
-            continue
-
         try:
             responses.append(unicodedata.lookup(word))
         except KeyError:
             pass
 
     return responses
-
-def weekly():
-    get_jpg(url)
-    # Nice command that needs writing based off of get_string
-    get_string_and_write_to_file()
-
-def daily():
-    # The file that was written to by the above
-    with open(file_that_is_written_to_weekly) as f:
-        text = f.read()
-
-    #import pprint
-    #pp = pprint.PrettyPrinter(indent=4)
-    #pp.pprint(pull_info_out_by_day(text))
-    day_data = pull_info_out_by_day(text)
-    day = time.strftime('%a').upper()
-    text = day_data[day].replace(" {} ".format(day), ' ')
-    responses = select_unicode_response(text)
-    # We need to store this in the cache file rather than printing it
-    print(', '.join(responses))
-
-def main(image_to_get_text_for):
-    print(get_string(image_to_get_text_for))
-    get_string_for_dir(os.path.join(output_dir, image_to_get_text_for.replace('.jpg', '')))
-
-if __name__ == "__main__":
-    output_dir = time.strftime('%X')
-    main("menu.jpg")
-
-# This needs a weekly cron to get the latest Menu.pdf.
-#
-# I think it is simplest to have a daily cron to check the responses and cache
-# them
-#
-# The code to check the cached responses can be part of the dogsbot daemon
